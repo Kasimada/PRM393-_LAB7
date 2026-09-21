@@ -1,12 +1,15 @@
+// lib/widgets/password_strength_indicator.dart
 import 'package:flutter/material.dart';
 import '../utils/validators.dart';
 
 class PasswordStrengthIndicator extends StatelessWidget {
   final String password;
+  final ValidatorService validatorService; // Nâng cao: Tiêm DI vào widget
 
   const PasswordStrengthIndicator({
     super.key,
     required this.password,
+    required this.validatorService, // Bắt buộc phải truyền vào
   });
 
   @override
@@ -15,10 +18,11 @@ class PasswordStrengthIndicator extends StatelessWidget {
       return const SizedBox.shrink();
     }
 
-    final strength = Validators.calculatePasswordStrength(password);
-    final label = Validators.getStrengthLabel(strength);
-    final color = Validators.getStrengthColor(strength);
-    final progress = Validators.getStrengthProgress(strength);
+    // Dùng instance được truyền vào thay vì gọi class tĩnh
+    final strength = validatorService.calculatePasswordStrength(password);
+    final label = validatorService.getStrengthLabel(strength);
+    final color = validatorService.getStrengthColor(strength);
+    final progress = validatorService.getStrengthProgress(strength);
 
     return Padding(
       padding: const EdgeInsets.only(top: 8.0, bottom: 4.0),
