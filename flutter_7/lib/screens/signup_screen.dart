@@ -1,7 +1,18 @@
 import 'package:flutter/material.dart';
-import '../utils/validators.dart';
-import '../widgets/password_strength_indicator.dart';
 
+import '../services/mock_auth_service.dart';
+import '../utils/validators.dart';
+import '../widgets/custom_text_form_field.dart';
+import '../widgets/password_strength_indicator.dart';
+import '../widgets/registration_dialog.dart';
+import '../widgets/signup_submit_button.dart';
+import '../widgets/terms_checkbox.dart';
+
+/// MÀN HÌNH CHÍNH (SCREEN): SignupScreen
+/// Chức năng: Đóng vai trò là Điều phối viên (Orchestrator).
+/// - Quản lý trạng thái FormState và GlobalKey.
+/// - Liên kết các luồng Focus bàn phím ảo giữa các ô.
+/// - Nhận dữ liệu và kích hoạt kiểm tra qua tầng nghiệp vụ MockAuthService.
 class SignupScreen extends StatefulWidget {
   const SignupScreen({super.key});
 
@@ -10,39 +21,34 @@ class SignupScreen extends StatefulWidget {
 }
 
 class _SignupScreenState extends State<SignupScreen> {
-  // GlobalKey to manage FormState and perform validation
+  // 1. Khóa toàn cục để truy cập đối tượng FormState của Form
   final _formKey = GlobalKey<FormState>();
 
-  // TextEditingControllers to retrieve user inputs
+  // 2. Khởi tạo đối tượng tầng Dịch vụ xác thực
+  final _authService = MockAuthService();
+
+  // 3. Quản lý văn bản người dùng nhập vào
   final _nameController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
 
-  // FocusNodes to manage keyboard navigation between fields
+  // 4. Quản lý tiêu điểm bàn phím ảo (Focus Nodes)
   final _nameFocus = FocusNode();
   final _emailFocus = FocusNode();
   final _passwordFocus = FocusNode();
   final _confirmPasswordFocus = FocusNode();
 
-  // State variables for toggling password visibility
-  bool _obscurePassword = true;
-  bool _obscureConfirmPassword = true;
-
-  // Bonus: Terms and conditions agreement state
+  // 5. Biến trạng thái giao diện (UI State)
   bool _agreeToTerms = false;
   bool _termsError = false;
-
-  // Async Email check state
   bool _isCheckingEmail = false;
-
-  // Current password value for dynamic password strength calculation
   String _currentPassword = '';
 
   @override
   void initState() {
     super.initState();
-    // Listen to password changes to update strength indicator dynamically
+    // Lắng nghe thay đổi của ô mật khẩu để cập nhật thanh đo độ mạnh (Password Strength) real-time
     _passwordController.addListener(() {
       setState(() {
         _currentPassword = _passwordController.text;
@@ -52,7 +58,7 @@ class _SignupScreenState extends State<SignupScreen> {
 
   @override
   void dispose() {
-    // Dispose controllers and focus nodes to avoid memory leaks
+    // Bắt buộc giải phóng toàn bộ Controller và FocusNode để chống rò rỉ bộ nhớ (Memory Leak)
     _nameController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
@@ -66,52 +72,47 @@ class _SignupScreenState extends State<SignupScreen> {
   }
 
   // ==========================================================================
-  // SUBMIT FORM & ASYNC EMAIL CHECK (Lab 7.1, 7.2, 7.4)
+  // HÀM XỬ LÝ SUBMIT & KIỂM TRA TÀI KHOẢN (ASYNC EMAIL CHECK)
   // ==========================================================================
   Future<void> _submitForm() async {
-    // Dismiss the virtual keyboard
+    // Đóng bàn phím ảo
     FocusScope.of(context).unfocus();
 
-    // Check Terms & Conditions checkbox
-    if (!_agreeToTerms) {
-      setState(() {
-        _termsError = true;
-      });
-    } else {
-      setState(() {
-        _termsError = false;
-      });
-    }
+    // Bước 1: Kiểm tra Checkbox Điều khoản & Dịch vụ
+    setState(() {
+      _termsError = !_agreeToTerms;
+    });
 
-    // Validate form fields
+    // Bước 2: Kích hoạt toàn bộ validator đồng bộ của Form
+    // Câu lệnh này sẽ duyệt qua từng ô TextFormField và gọi hàm validator tương ứng
     final isFormValid = _formKey.currentState?.validate() ?? false;
     if (!isFormValid || !_agreeToTerms) {
-      return;
+      return; // Dừng lại ngay nếu form còn lỗi hoặc chưa đồng ý điều khoản
     }
 
-    // Save form state (if Form.onSaved callbacks are used)
     _formKey.currentState?.save();
 
-    // Lab 7.4: Perform simulated async email check
+    // Bước 3: Bật trạng thái Loading của nút Submit
     setState(() {
       _isCheckingEmail = true;
     });
 
-    // Simulate network delay (2 seconds)
-    await Future.delayed(const Duration(seconds: 2));
+    final emailInput = _emailController.text.trim();
 
+    // Bước 4: Gọi hàm kiểm tra email bất đồng bộ từ MockAuthService
+    final isAvailable = await _authService.checkEmailAvailability(emailInput);
+
+    // Kiểm tra widget còn tồn tại trong cây widget không trước khi cập nhật State
     if (!mounted) return;
 
-    final emailInput = _emailController.text.trim().toLowerCase();
-    // Fake server check: emails starting with "taken" are treated as unavailable
-    final isEmailTaken = emailInput.startsWith('taken');
-
+    // Tắt trạng thái Loading
     setState(() {
       _isCheckingEmail = false;
     });
 
-    if (isEmailTaken) {
-      // Show error notification when email is already in use
+    // Bước 5: Xử lý kết quả trả về từ Service
+    if (!isAvailable) {
+      // Trường hợp Email đã tồn tại -> Hiển thị thông báo SnackBar màu đỏ
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Row(
@@ -129,50 +130,17 @@ class _SignupScreenState extends State<SignupScreen> {
         ),
       );
     } else {
-      // Registration successful -> Show confirmation dialog
-      showDialog(
-        context: context,
-        builder: (dialogContext) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Row(
-            children: [
-              Icon(Icons.check_circle, color: Colors.green, size: 28),
-              SizedBox(width: 10),
-              Text('Registration Successful'),
-            ],
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Full Name: ${_nameController.text.trim()}'),
-              const SizedBox(height: 6),
-              Text('Email: ${_emailController.text.trim()}'),
-              const SizedBox(height: 12),
-              Text(
-                'Your account has been created successfully with strong security verification.',
-                style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
-              ),
-            ],
-          ),
-          actions: [
-            ElevatedButton(
-              onPressed: () {
-                Navigator.pop(dialogContext);
-                _resetForm();
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.teal,
-                foregroundColor: Colors.white,
-              ),
-              child: const Text('OK'),
-            ),
-          ],
-        ),
+      // Trường hợp Đăng ký thành công -> Mở hộp thoại chúc mừng
+      showRegistrationSuccessDialog(
+        context,
+        name: _nameController.text.trim(),
+        email: emailInput,
+        onOk: _resetForm,
       );
     }
   }
 
+  // Hàm xóa trắng form sau khi hoàn tất đăng ký
   void _resetForm() {
     _formKey.currentState?.reset();
     _nameController.clear();
@@ -188,7 +156,7 @@ class _SignupScreenState extends State<SignupScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Lab 7.3: GestureDetector to dismiss keyboard on tapping outside
+    // UX 1: GestureDetector đóng bàn phím khi người dùng chạm ra khoảng trắng bên ngoài
     return GestureDetector(
       onTap: () => FocusScope.of(context).unfocus(),
       child: Scaffold(
@@ -200,16 +168,17 @@ class _SignupScreenState extends State<SignupScreen> {
           elevation: 2,
         ),
         body: SafeArea(
-          // Lab 7.3: SingleChildScrollView avoids bottom overflow when keyboard opens
+          // UX 2: SingleChildScrollView chống lỗi tràn viền bàn phím (Bottom Overflow)
           child: SingleChildScrollView(
             padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 20.0),
             child: Form(
               key: _formKey,
-              // Lab 7.2: AutovalidateMode.onUserInteraction gives immediate feedback
+              // UX 3: Kiểm tra tức thời ngay khi người dùng gõ phím
               autovalidateMode: AutovalidateMode.onUserInteraction,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  // PHẦN HEADER
                   const Center(
                     child: CircleAvatar(
                       radius: 36,
@@ -235,19 +204,14 @@ class _SignupScreenState extends State<SignupScreen> {
                   ),
                   const SizedBox(height: 24),
 
-                  // 1. FULL NAME FIELD
-                  TextFormField(
+                  // TRƯỜNG 1: FULL NAME (Chuyển focus sang Email khi gõ Next)
+                  CustomTextFormField(
                     controller: _nameController,
                     focusNode: _nameFocus,
+                    labelText: 'Full Name *',
+                    hintText: 'Enter your full name',
+                    prefixIcon: Icons.person_outline,
                     textInputAction: TextInputAction.next,
-                    decoration: InputDecoration(
-                      labelText: 'Full Name *',
-                      hintText: 'Enter your full name',
-                      prefixIcon: const Icon(Icons.person_outline),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
                     validator: Validators.validateName,
                     onFieldSubmitted: (_) {
                       FocusScope.of(context).requestFocus(_emailFocus);
@@ -255,20 +219,15 @@ class _SignupScreenState extends State<SignupScreen> {
                   ),
                   const SizedBox(height: 16),
 
-                  // 2. EMAIL FIELD
-                  TextFormField(
+                  // TRƯỜNG 2: EMAIL (Chuyển focus sang Password khi gõ Next)
+                  CustomTextFormField(
                     controller: _emailController,
                     focusNode: _emailFocus,
+                    labelText: 'Email Address *',
+                    hintText: 'name@example.com (try "taken@..." to test error)',
+                    prefixIcon: Icons.email_outlined,
                     keyboardType: TextInputType.emailAddress,
                     textInputAction: TextInputAction.next,
-                    decoration: InputDecoration(
-                      labelText: 'Email Address *',
-                      hintText: 'name@example.com (try "taken@..." to test error)',
-                      prefixIcon: const Icon(Icons.email_outlined),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
                     validator: Validators.validateEmail,
                     onFieldSubmitted: (_) {
                       FocusScope.of(context).requestFocus(_passwordFocus);
@@ -276,66 +235,34 @@ class _SignupScreenState extends State<SignupScreen> {
                   ),
                   const SizedBox(height: 16),
 
-                  // 3. PASSWORD FIELD
-                  TextFormField(
+                  // TRƯỜNG 3: PASSWORD (Tích hợp Show/Hide mắt & Chuyển focus sang Confirm)
+                  CustomTextFormField(
                     controller: _passwordController,
                     focusNode: _passwordFocus,
-                    obscureText: _obscurePassword,
+                    labelText: 'Password *',
+                    hintText: 'Min 8 chars with at least 1 digit',
+                    prefixIcon: Icons.lock_outline,
+                    isPassword: true,
                     textInputAction: TextInputAction.next,
-                    decoration: InputDecoration(
-                      labelText: 'Password *',
-                      hintText: 'Min 8 chars with at least 1 digit',
-                      prefixIcon: const Icon(Icons.lock_outline),
-                      suffixIcon: IconButton(
-                        icon: Icon(
-                          _obscurePassword ? Icons.visibility_off : Icons.visibility,
-                          color: Colors.grey.shade600,
-                        ),
-                        onPressed: () {
-                          setState(() {
-                            _obscurePassword = !_obscurePassword;
-                          });
-                        },
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
                     validator: Validators.validatePassword,
                     onFieldSubmitted: (_) {
                       FocusScope.of(context).requestFocus(_confirmPasswordFocus);
                     },
                   ),
 
-                  // Bonus: Password Strength Indicator
+                  // THANH ĐO ĐỘ MẠNH MẬT KHẨU TRỰC QUAN (Bonus)
                   PasswordStrengthIndicator(password: _currentPassword),
                   const SizedBox(height: 12),
 
-                  // 4. CONFIRM PASSWORD FIELD
-                  TextFormField(
+                  // TRƯỜNG 4: CONFIRM PASSWORD (Nút Done kích hoạt gọi _submitForm)
+                  CustomTextFormField(
                     controller: _confirmPasswordController,
                     focusNode: _confirmPasswordFocus,
-                    obscureText: _obscureConfirmPassword,
+                    labelText: 'Confirm Password *',
+                    hintText: 'Re-enter your password',
+                    prefixIcon: Icons.lock_reset,
+                    isPassword: true,
                     textInputAction: TextInputAction.done,
-                    decoration: InputDecoration(
-                      labelText: 'Confirm Password *',
-                      hintText: 'Re-enter your password',
-                      prefixIcon: const Icon(Icons.lock_reset),
-                      suffixIcon: IconButton(
-                        icon: Icon(
-                          _obscureConfirmPassword ? Icons.visibility_off : Icons.visibility,
-                          color: Colors.grey.shade600,
-                        ),
-                        onPressed: () {
-                          setState(() {
-                            _obscureConfirmPassword = !_obscureConfirmPassword;
-                          });
-                        },
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
                     validator: (value) => Validators.validateConfirmPassword(
                       value,
                       _passwordController.text,
@@ -344,88 +271,25 @@ class _SignupScreenState extends State<SignupScreen> {
                   ),
                   const SizedBox(height: 12),
 
-                  // Bonus: Terms & Conditions Checkbox
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      Checkbox(
-                        value: _agreeToTerms,
-                        activeColor: Colors.teal,
-                        onChanged: (val) {
-                          setState(() {
-                            _agreeToTerms = val ?? false;
-                            if (_agreeToTerms) {
-                              _termsError = false;
-                            }
-                          });
-                        },
-                      ),
-                      Expanded(
-                        child: GestureDetector(
-                          onTap: () {
-                            setState(() {
-                              _agreeToTerms = !_agreeToTerms;
-                              if (_agreeToTerms) {
-                                _termsError = false;
-                              }
-                            });
-                          },
-                          child: const Text(
-                            'I agree to the Terms & Conditions and Privacy Policy',
-                            style: TextStyle(fontSize: 13),
-                          ),
-                        ),
-                      ),
-                    ],
+                  // CHECKBOX ĐIỀU KHOẢN DỊCH VỤ (Bonus)
+                  TermsAndConditionsCheckbox(
+                    value: _agreeToTerms,
+                    hasError: _termsError,
+                    onChanged: (val) {
+                      setState(() {
+                        _agreeToTerms = val ?? false;
+                        if (_agreeToTerms) {
+                          _termsError = false;
+                        }
+                      });
+                    },
                   ),
-                  if (_termsError)
-                    Padding(
-                      padding: const EdgeInsets.only(left: 12.0, bottom: 8.0),
-                      child: Text(
-                        'You must accept the terms & conditions to register',
-                        style: TextStyle(color: Colors.red.shade700, fontSize: 12),
-                      ),
-                    ),
                   const SizedBox(height: 16),
 
-                  // SUBMIT BUTTON (Lab 7.1 + Lab 7.4)
-                  SizedBox(
-                    height: 52,
-                    child: ElevatedButton(
-                      onPressed: _isCheckingEmail ? null : _submitForm,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.teal,
-                        foregroundColor: Colors.white,
-                        disabledBackgroundColor: Colors.teal.shade200,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        elevation: 2,
-                      ),
-                      child: _isCheckingEmail
-                          ? const Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2.5,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                                SizedBox(width: 12),
-                                Text(
-                                  'Checking email availability...',
-                                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
-                                ),
-                              ],
-                            )
-                          : const Text(
-                              'Sign Up',
-                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                            ),
-                    ),
+                  // NÚT BẤM ĐĂNG KÝ TÍCH HỢP LOADING CIRCULAR PROGRESS INDICATOR
+                  SignupSubmitButton(
+                    isLoading: _isCheckingEmail,
+                    onPressed: _submitForm,
                   ),
                 ],
               ),
