@@ -21,8 +21,8 @@ class SignupScreen extends StatefulWidget {
 }
 
 class _SignupScreenState extends State<SignupScreen> {
-  // 1. Khóa toàn cục để truy cập đối tượng FormState của Form
-  final _formKey = GlobalKey<FormState>();
+  // 1. Khóa toàn cục để truy cập đối tượng FormState của Form (không để final để có thể cấp mới khi reload)
+  GlobalKey<FormState> _formKey = GlobalKey<FormState>();
 
   // 2. Khởi tạo đối tượng tầng Dịch vụ xác thực
   final _authService = MockAuthService();
@@ -140,14 +140,16 @@ class _SignupScreenState extends State<SignupScreen> {
     }
   }
 
-  // Hàm xóa trắng form sau khi hoàn tất đăng ký
+  // Hàm reload lại form sạch sẽ sau khi hoàn tất đăng ký
   void _resetForm() {
-    _formKey.currentState?.reset();
     _nameController.clear();
     _emailController.clear();
     _passwordController.clear();
     _confirmPasswordController.clear();
     setState(() {
+      // Cấp mới GlobalKey để Flutter dựng lại Form nguyên bản 100%,
+      // xóa sạch dấu vết tương tác trước đó nên hoàn toàn không bị hiện chữ đỏ "required"
+      _formKey = GlobalKey<FormState>();
       _agreeToTerms = false;
       _termsError = false;
       _currentPassword = '';
@@ -173,8 +175,8 @@ class _SignupScreenState extends State<SignupScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 20.0),
             child: Form(
               key: _formKey,
-              // UX 3: Kiểm tra tức thời ngay khi người dùng gõ phím
-              autovalidateMode: AutovalidateMode.onUserInteraction,
+              // Lưu ý UX: Không đặt autovalidateMode ở Form vì sẽ làm tất cả các ô chưa nhập bị báo đỏ cùng lúc.
+              // Thay vào đó, autovalidateMode được đặt riêng ở từng CustomTextFormField.
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [

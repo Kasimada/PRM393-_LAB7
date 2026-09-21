@@ -73,6 +73,7 @@ class _CustomTextFormFieldState extends State<CustomTextFormField> {
       obscureText: _obscureText,
       keyboardType: widget.keyboardType,
       textInputAction: widget.textInputAction,
+      autovalidateMode: AutovalidateMode.onUserInteraction, // Chỉ validate riêng ô này khi người dùng gõ vào ô này
       validator: widget.validator,
       onFieldSubmitted: widget.onFieldSubmitted,
       decoration: InputDecoration(
